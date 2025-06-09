@@ -1,9 +1,9 @@
 [project]
-name = "template"
+name = "data_collection"
 version = "0.1.0"
 description = ""
 authors = [
-    {name = "Nikita Savvin", email = "nikita.vsav@gmail.com"},
+    {name = "Nikita Savvin", email = "savvin.nikita.work@yandex.ru"},
 ]
 dependencies = [
     "pytest>=8.1.1",
@@ -17,8 +17,9 @@ dependencies = [
     "uvicorn>=0.28.0",
     "pandas>=2.2.1",
     "coverage==7.4.4",
+    "psycopg2-binary>=2.9.10",
 ]
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 readme = "README.md"
 license = {text = "MIT"}
 
