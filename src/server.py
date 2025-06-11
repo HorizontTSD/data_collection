@@ -69,11 +69,10 @@ async def run_pipeline():
         import traceback
         error_trace = traceback.format_exc()
         logger.error(error_trace)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Pipeline execution failed: {str(e)}",
-            headers={"X-Error": str(e)},
-        )
+    raise HTTPException(
+        status_code=500,
+        detail=f"Pipeline execution failed: {str(e)}"
+    )
 
 
 
