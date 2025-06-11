@@ -13,6 +13,6 @@ RUN pip install pdm zstandard
 RUN pdm config python.use_venv false
 RUN pdm install --prod --no-lock --no-editable
 
-EXPOSE 8000
+EXPOSE 7077
 
 ENTRYPOINT ["pdm", "run", "src/server.py"]
