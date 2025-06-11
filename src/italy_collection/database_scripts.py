@@ -1,10 +1,9 @@
 from src.clients.create_clients import get_db_connection
 
 
-table_names = ['load_consumption']
-col_time = 'datetime'
 
-def create_timescale_tables(table_names):
+def create_timescale_tables(tables_mapping):
+    col_time = 'datetime'
     create_base_sql = """
         CREATE TABLE IF NOT EXISTS {table_name} (
             {col_time} TIMESTAMPTZ NOT NULL,
@@ -22,15 +21,17 @@ def create_timescale_tables(table_names):
     try:
         with get_db_connection() as conn:
             with conn.cursor() as cur:
-                for table in table_names:
+                for table in tables_mapping:
+                    table_name = table["table_name"]
+                    col_name = table["target_col_name"]
                     sql = create_base_sql.format(
-                        table_name=table,
+                        table_name=table_name,
                         col_time=col_time,
-                        col_name=table
+                        col_name=col_name
                     )
                     cur.execute(sql)
                 conn.commit()
-        print(f"Таблицы {table_names} успешно созданы.")
+        print(f"Таблицы {tables_mapping} успешно созданы.")
     except Exception as e:
         print(f"Ошибка при создании таблиц: {e}")
 
@@ -52,6 +53,9 @@ def drop_timescale_tables(to_drop_table_names):
         print(f"Ошибка при удалении таблиц: {e}")
 
 if __name__ == "__main__":
-    to_drop_table_names = ['load_consumption']
+    # to_drop_table_names = ['xgb_predict_load_consumption']
     # drop_timescale_tables(to_drop_table_names)
-    create_timescale_tables(table_names)
+
+    tables_mapping = [{"table_name": "xgb_predict_load_consumption", "target_col_name": "load_consumption"}]
+
+    create_timescale_tables(tables_mapping)
