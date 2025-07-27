@@ -4,10 +4,19 @@ from datetime import timedelta
 from pandas import DataFrame
 import pandas as pd
 from tinkoff.invest import Client
-import json
+from dotenv import load_dotenv
+import os
 
+load_dotenv()
+TINKOFF_TOKEN = os.getenv('TINKOFF_TOKEN')
 
-TINKOFF_TOKEN = 't.kF5HrpicTNIofE9aAnCDKRBFTXNwyfm9ypsVhCFQxCE3cVOucjUMhpYYxM1V5teev9eaI1_9aYnFWnM71uy97w'
+DB_PARAMS = {
+    "dbname": "mydb",
+    "user": "myuser",
+    "password": "mypassword",
+    "host": "77.37.136.11",
+    "port": 8083
+}
 
 def get_last_datetime(db):
     last_datetime = datetime(1000,1,1)
