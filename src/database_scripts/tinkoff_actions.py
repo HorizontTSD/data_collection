@@ -1,14 +1,12 @@
+import csv
 from pathlib import Path
 import psycopg2
-from fastapi import FastAPI
-from datetime import datetime, timezone
 from datetime import timedelta
 from pandas import DataFrame
 import pandas as pd
-from tinkoff.invest import Client, MoneyValue, InstrumentStatus, CandleInterval, InstrumentIdType
+from tinkoff.invest import Client, CandleInterval
 from dotenv import load_dotenv
 import os
-import json
 from tinkoff.invest.caching.market_data_cache.cache import MarketDataCache
 from tinkoff.invest.caching.market_data_cache.cache_settings import MarketDataCacheSettings
 from tinkoff.invest.utils import now
@@ -104,7 +102,7 @@ def get_cached_candles_data(figi_list: list, days: int, interval: CandleInterval
     return candles_df
 
 
-def get_figi_from_tbank(data:list) -> dict:
+def get_all_figi_from_tbank(data:list) -> dict:
     """
     data: instruments из тинькоффа с данными об акциях
     return figi: список идентификаторов акций figi
@@ -113,27 +111,48 @@ def get_figi_from_tbank(data:list) -> dict:
 
     for candle in data.instruments:
         figi.append(candle.figi)
+    """
+    # побочный квест с созданием первичного файла со всеми возможными акциями |figi:название акции|
+    data_sorted = sorted(data.instruments, key=lambda k: k.name)
+    with open('candles_info.csv', 'w', newline='', encoding='utf-8') as file:
+        writer = csv.writer(file)
 
+        writer.writerow(['FIGI', 'Name'])
+
+        for candle in data_sorted:
+            writer.writerow([candle.figi, candle.name])
+    """
     return figi
 
 
+def get_figi_from_file(file_name:str) -> list:
+
+    figi_list = []
+    with open(file_name, 'r', encoding='utf-8') as file:
+        csv_reader = csv.reader(file)
+        next(csv_reader)
+
+        for row in csv_reader:
+            if row:
+                figi_list.append(row[0])
+
+    return figi_list
+
 with Client(TINKOFF_TOKEN) as client:
     shares_connection = client.instruments.shares()
-    #candle_date = get_figi_from_tbank(shares_connection)
+    # candle_date = get_all_figi_from_tbank(shares_connection)
 
-    figi_list = ["BBG004730N88"]#, "BBG0047315Y7", "BBG00475J7X6"]
+    figi_list = get_figi_from_file('candles_info_popular_ru_us.csv')
 
     candles_data = get_cached_candles_data(
         figi_list,
-        days=1,
+        days=140,
         interval=CandleInterval.CANDLE_INTERVAL_1_MIN
     )
 
-    for figi, data in candles_data.items():
-        if data:
-            print(f"{figi}: первая свеча {data[0]['time']}, последняя {data[-1]['time']}")
+a = 1
 
-a=1
+
 
 
 
