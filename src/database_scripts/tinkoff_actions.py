@@ -1,5 +1,7 @@
 import csv
 from pathlib import Path
+from typing import Any
+
 import psycopg2
 from datetime import timedelta
 from pandas import DataFrame
@@ -102,7 +104,7 @@ def get_cached_candles_data(figi_list: list, days: int, interval: CandleInterval
     return candles_df
 
 
-def get_all_figi_from_tbank(data:list) -> dict:
+def get_all_figi_from_tbank(data:list) -> list[Any]:
     """
     data: instruments из тинькоффа с данными об акциях
     return figi: список идентификаторов акций figi
@@ -126,9 +128,15 @@ def get_all_figi_from_tbank(data:list) -> dict:
 
 
 def get_figi_from_file(file_name:str) -> list:
+    """
+    file_name: имя файла с отобранными вручную акциями (из побочного квеста)
+    return figi: список уникальных id избранных акций
+    """
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    file_path = os.path.join(script_dir, file_name)
 
     figi_list = []
-    with open(file_name, 'r', encoding='utf-8') as file:
+    with open(file_path, 'r', encoding='utf-8') as file:
         csv_reader = csv.reader(file)
         next(csv_reader)
 
@@ -138,19 +146,7 @@ def get_figi_from_file(file_name:str) -> list:
 
     return figi_list
 
-with Client(TINKOFF_TOKEN) as client:
-    shares_connection = client.instruments.shares()
-    # candle_date = get_all_figi_from_tbank(shares_connection)
 
-    figi_list = get_figi_from_file('candles_info_popular_ru_us.csv')
-
-    candles_data = get_cached_candles_data(
-        figi_list,
-        days=140,
-        interval=CandleInterval.CANDLE_INTERVAL_1_MIN
-    )
-
-a = 1
 
 
 
