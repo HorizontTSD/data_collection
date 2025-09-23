@@ -1,7 +1,6 @@
 import csv
 from pathlib import Path
 from typing import Any
-
 import psycopg2
 from datetime import timedelta
 from pandas import DataFrame
@@ -17,9 +16,12 @@ load_dotenv()
 TINKOFF_TOKEN = os.getenv('TINKOFF_TOKEN')
 
 
-def fetch_data_from_db() -> DataFrame:
-    table_name = 'load_consumption'
-    measurement = 'load_consumption'
+def fetch_data_from_db(table_name: str = 'kload_consumption') -> DataFrame:
+    columns_name = ["datetime", "load_consumption"]
+    columns_name_str = ''
+    for column in columns_name:
+        columns_name_str += column + ', '
+    columns_name_str = columns_name_str[:-2]
 
     DB_PARAMS = {
         "dbname": os.getenv("DB_NAME"),
@@ -28,18 +30,34 @@ def fetch_data_from_db() -> DataFrame:
         "host": os.getenv("DB_HOST"),
         "port": int(os.getenv("DB_PORT"))
     }
+
     conn = psycopg2.connect(**DB_PARAMS)
     cur = conn.cursor()
 
-    select_query = f"""
-    SELECT * FROM {table_name} ORDER BY datetime;
-    """
+    try:
+        select_query = f"""
+        SELECT {columns_name_str} 
+        FROM {table_name} 
+        ORDER BY datetime;
+        """
 
-    cur.execute(select_query)
-    rows = cur.fetchall()
+        cur.execute(select_query)
+        rows = cur.fetchall()
 
-    df_result = pd.DataFrame(rows, columns=["datetime", measurement])
-    df_result["datetime"] = df_result["datetime"].dt.tz_localize(None)
+        df_result = pd.DataFrame(rows, columns=columns_name)
+        df_result["datetime"] = df_result["datetime"].dt.tz_localize(None)
+    except:
+
+        '''
+        create_table_query = f"""
+        CREATE TABLE IF NOT EXISTS {table_name} (
+            {columns_name[0]} TIMESTAMP PRIMARY KEY,
+            {columns_name[1]} FLOAT
+        );
+        """
+        '''
+        df_result = DataFrame()
+
 
     cur.close()
     conn.close()
