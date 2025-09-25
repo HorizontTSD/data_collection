@@ -29,5 +29,5 @@ def get_candles_data(days: int = 1, interval: CandleInterval = CandleInterval.CA
 
 if __name__ == '__main__':
     print('ok')
-    #candles_data = get_candles_data()
+    candles_data = get_candles_data()
     fetch_data_from_db()

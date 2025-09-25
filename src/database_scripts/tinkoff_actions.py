@@ -5,7 +5,7 @@ import psycopg2
 from datetime import timedelta
 from pandas import DataFrame
 import pandas as pd
-from tinkoff.invest import Client, CandleInterval
+from tinkoff.invest import Client, CandleInterval, InstrumentIdType
 from dotenv import load_dotenv
 import os
 from tinkoff.invest.caching.market_data_cache.cache import MarketDataCache
@@ -89,14 +89,26 @@ def get_cached_candles_data(figi_list: list, days: int, interval: CandleInterval
         market_data_cache = MarketDataCache(settings=settings, services=client)
 
         for figi in figi_list:
+            #TODO эта херня мне не нравится. переделать
+            first_time = client.instruments.get_instrument_by(
+                id_type=InstrumentIdType.INSTRUMENT_ID_TYPE_FIGI,
+                id=figi).instrument.first_1day_candle_date
+
             try:
+                time_line = now() - first_time
+                if time_line >= timedelta(days=days):
+                    time_line = first_time + timedelta(days=7)
+
                 candles_list = list(market_data_cache.get_all_candles(
                     figi=figi,
-                    from_=now() - timedelta(days=days),
+                    #TODO изменить диапазон
+                    from_=time_line,
+                   # from_=now() - timedelta(days=days),
                     interval=interval,
                 ))
 
                 for candle in candles_list:
+
                     candle_data = {
                         'figi': figi,
                         'time': candle.time,
@@ -107,7 +119,8 @@ def get_cached_candles_data(figi_list: list, days: int, interval: CandleInterval
                         'volume': candle.volume,
                         'is_complete': candle.is_complete
                     }
-                    all_candles.append(candle_data)
+                    if candle_data not in all_candles:
+                        all_candles.append(candle_data)
 
                 print(f"Получено данных для {figi}: {len(candles_list)} свечей")
 
