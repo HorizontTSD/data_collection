@@ -1,6 +1,8 @@
-from tinkoff.invest import Client, CandleInterval
-from src.database_scripts.tinkoff_actions import (TINKOFF_TOKEN, get_figi_from_file, get_cached_candles_data,
-                                                  get_all_figi_from_tbank, fetch_data_from_db)
+from datetime import datetime
+from tinkoff.invest import Client,CandleInterval
+
+from src.database_scripts.tinkoff_actions import TINKOFF_TOKEN, get_figi_from_file, get_lonely_figi_data, \
+    fetch_data_from_db
 
 
 def get_candles_data(days: int = 1, interval: CandleInterval = CandleInterval.CANDLE_INTERVAL_1_MIN,
@@ -18,16 +20,22 @@ def get_candles_data(days: int = 1, interval: CandleInterval = CandleInterval.CA
 
         figi_list = get_figi_from_file(file_name)
 
-        candles = get_cached_candles_data(
-            figi_list,
-            days=days,
-            interval=interval
-        )
+        #candles = get_cached_candles_data(
+         #   figi_list,
+          #  days=days,
+         #   interval=interval
+        #)
 
-        return candles
+
+        return #candles
 
 
 if __name__ == '__main__':
     print('ok')
-    candles_data = get_candles_data()
-    fetch_data_from_db()
+   # candles_data = get_candles_data()
+    data1 = fetch_data_from_db()
+
+    with Client(TINKOFF_TOKEN) as client:
+        data = get_lonely_figi_data(client, 'BBG00F6NKQX3', CandleInterval.CANDLE_INTERVAL_1_MIN, 3) #, datetime.now())
+        a=1
+
