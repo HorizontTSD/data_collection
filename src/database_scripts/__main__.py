@@ -1,41 +1,34 @@
 from datetime import datetime
 from tinkoff.invest import Client,CandleInterval
-
+import threading
 from src.database_scripts.tinkoff_actions import TINKOFF_TOKEN, get_figi_from_file, get_lonely_figi_data, \
-    fetch_data_from_db
-
-
-def get_candles_data(days: int = 1, interval: CandleInterval = CandleInterval.CANDLE_INTERVAL_1_MIN,
-                     file_name: str = "candles_info_popular_ru_us.csv"):
-    """
-    days: кол-во дней исторических данных для загрузки. Глубина истории
-    CandleInterval: интервал свечей
-    file_name: имя файла с отобранными вручную акциями
-    """
-    with Client(TINKOFF_TOKEN) as client:
-        # ф-и для получения всех доступных акций
-        # тк потом обработка была вручную, эти ф-и скрыты. не удалять при первом просмотре!
-        # shares_connection = client.instruments.shares()
-        # candle_date = get_all_figi_from_tbank(shares_connection)
-
-        figi_list = get_figi_from_file(file_name)
-
-        #candles = get_cached_candles_data(
-         #   figi_list,
-          #  days=days,
-         #   interval=interval
-        #)
-
-
-        return #candles
-
+    fetch_data_from_db, process_all_stocks_multithreaded, safe_print
 
 if __name__ == '__main__':
-    print('ok')
-   # candles_data = get_candles_data()
-    data1 = fetch_data_from_db()
+    #figi_list = get_figi_from_file('candles_info_popular_ru_us.csv')
 
-    with Client(TINKOFF_TOKEN) as client:
-        data = get_lonely_figi_data(client, 'BBG00F6NKQX3', CandleInterval.CANDLE_INTERVAL_1_MIN, 3) #, datetime.now())
-        a=1
+    #igi_list = figi_list[:2]
+
+    #data1 = fetch_data_from_db('t1', SIZE_PACKAGE_DAYS, 'BBG00F6NKQX3')
+    #data1 = fetch_data_from_db('t2', SIZE_PACKAGE_DAYS, 'BBG000VKG4R5')
+
+    safe_print('ok')
+
+    # Получаем список FIGI из файла
+    figi_list = get_figi_from_file('candles_info_popular_ru_us.csv')
+
+    figi_list = ['BBG00F6NKQX3', 'BBG000VKG4R5']#figi_list[:2]
+    safe_print(f"Обрабатываем {len(figi_list)} акций")
+
+    # Создаем конфигурацию для каждой акции вида имя_файла, размер пакета, фиги акции
+    stocks_config = []
+    SIZE_PACKAGE_DAYS = 1
+    for i, figi in enumerate(figi_list):
+        table_name = f'{figi}_candle'
+        stocks_config.append((table_name, SIZE_PACKAGE_DAYS, figi))  # (table_name, days, figi)
+
+    # Запускаем многопоточную обработку
+    process_all_stocks_multithreaded(stocks_config, max_workers=3)
+
+    a=1
 

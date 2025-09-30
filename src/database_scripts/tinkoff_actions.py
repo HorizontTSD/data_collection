@@ -1,5 +1,7 @@
+import concurrent
 import csv
 import datetime
+import time
 from pathlib import Path
 from typing import Any
 import psycopg2
@@ -13,12 +15,20 @@ from tinkoff.invest.caching.market_data_cache.cache import MarketDataCache
 from tinkoff.invest.caching.market_data_cache.cache_settings import MarketDataCacheSettings
 from tinkoff.invest.utils import now
 from enum import Enum
+import threading
+
 
 load_dotenv()
 TINKOFF_TOKEN = os.getenv('TINKOFF_TOKEN')
 
+print_lock = threading.Lock()
 
-def fetch_data_from_db(table_name: str = 'kload_consumption') -> DataFrame:
+def safe_print(message:str):
+    with print_lock:
+        print(message)
+
+
+def fetch_data_from_db(table_name: str, size_package_days: int, candle_name: str) -> DataFrame:
 
     columns_name = ["datetime", "load_consumption"]
     columns_name_str = ''
@@ -58,11 +68,11 @@ def fetch_data_from_db(table_name: str = 'kload_consumption') -> DataFrame:
 
         with Client(TINKOFF_TOKEN) as client:
             last_time = pd.to_datetime(df_result.values[-1][0]).to_pydatetime()
-            df_result = get_lonely_figi_data(client, 'BBG00F6NKQX3', CandleInterval.CANDLE_INTERVAL_1_MIN,3, last_time)
+            df_new = get_lonely_figi_data(client, candle_name, CandleInterval.CANDLE_INTERVAL_1_MIN,size_package_days, last_time)
 
-            df_result.to_csv(f'{table_name}.csv',
+            df_new[1:].to_csv(f'{table_name}.csv',
                           mode='a',
-                          index=False)
+                          index=False, header=False)
 
         print(f'I EXIST! {len(df_result)} rows')
 
@@ -78,7 +88,7 @@ def fetch_data_from_db(table_name: str = 'kload_consumption') -> DataFrame:
         '''
         a=1
         with Client(TINKOFF_TOKEN) as client:
-            df_result = get_lonely_figi_data(client, 'BBG00F6NKQX3', CandleInterval.CANDLE_INTERVAL_1_MIN, 3)
+            df_result = get_lonely_figi_data(client, candle_name, CandleInterval.CANDLE_INTERVAL_1_MIN, size_package_days, None)
 
         df_result.to_csv(f'{table_name}.csv', index=False)
         print(f'CREATE NEW TABLE {len(df_result)} rows')
@@ -90,65 +100,9 @@ def fetch_data_from_db(table_name: str = 'kload_consumption') -> DataFrame:
     return df_result
 
 
-def get_cached_candles_data(figi_list: list, size_package_days: int, candle_interval: CandleInterval) -> DataFrame:
-
-
-    '''
-    all_candles = []
-
-    with Client(TINKOFF_TOKEN) as client:
-        settings = MarketDataCacheSettings(base_cache_dir=Path("market_data_cache"))
-        market_data_cache = MarketDataCache(settings=settings, services=client)
-
-        for figi in figi_list:
-            #TODO эта херня мне не нравится. переделать
-            first_time = client.instruments.get_instrument_by(
-                id_type=InstrumentIdType.INSTRUMENT_ID_TYPE_FIGI,
-                id=figi).instrument.first_1day_candle_date
-
-            try:
-                time_line = now() - first_time
-                if time_line >= timedelta(days=days):
-                    time_line = first_time + timedelta(days=7)
-
-                candles_list = list(market_data_cache.get_all_candles(
-                    figi=figi,
-                    #TODO изменить диапазон
-                    from_=time_line,
-                   # from_=now() - timedelta(days=days),
-                    interval=interval,
-                ))
-
-                for candle in candles_list:
-
-                    candle_data = {
-                        'figi': figi,
-                        'time': candle.time,
-                        'open': float(candle.open.units) + float(candle.open.nano) / 1e9,
-                        'high': float(candle.high.units) + float(candle.high.nano) / 1e9,
-                        'low': float(candle.low.units) + float(candle.low.nano) / 1e9,
-                        'close': float(candle.close.units) + float(candle.close.nano) / 1e9,
-                        'volume': candle.volume,
-                        'is_complete': candle.is_complete
-                    }
-                    if candle_data not in all_candles:
-                        all_candles.append(candle_data)
-
-                print(f"Получено данных для {figi}: {len(candles_list)} свечей")
-
-            except Exception as e:
-                print(f"Ошибка в ф-и get_cached_candles_data(...) \n для FIGI {figi}: {e} ")
-
-    candles_df = pd.DataFrame(all_candles)
-
-    if not candles_df.empty:
-        candles_df = candles_df.sort_values(['figi', 'time']).reset_index(drop=True)
-    '''
-    return # candles_df
-
 
 def get_lonely_figi_data(client, figi: str, candle_interval: CandleInterval, size_package_days: int,
-                         last_time:datetime.datetime = None) -> DataFrame:
+                         last_time:datetime.datetime) -> DataFrame:
     '''
     client: клиент тинькоффа
     candle_interval: интервал свечей
@@ -212,8 +166,7 @@ def get_lonely_figi_data(client, figi: str, candle_interval: CandleInterval, siz
             candles_list = list(candles_iterator)
 
             if candles_list:
-                print(f"DEBUG: First candle time = {candles_list[0].time}")
-                print(f"DEBUG: Last candle time = {candles_list[-1].time}")
+                print(f"DEBUG: candles_list is full")
             else:
                 print("DEBUG: candles_list is empty!")
 
@@ -282,9 +235,36 @@ def get_figi_from_file(file_name:str) -> list:
 
     return figi_list
 
+def process_single_stock(args):
+    """Обрабатывает одну акцию в потоке"""
+    table_name, size_package_days, candle_name = args
+    try:
+        safe_print(f"Обрабатываем {candle_name}...")
+        result = fetch_data_from_db(table_name, size_package_days, candle_name)
+        result = result.drop_duplicates()
+        safe_print(f"Акция {candle_name}: завершено")
+        return True
+    except Exception as e:
+        safe_print(f"Ошибка {candle_name}: {e}")
+        return False
 
 
+def process_all_stocks_multithreaded(stocks_config, max_workers=3):
+    """
+    stocks_config: список кортежей (table_name, size_package_days, candle_name)
+    max_workers: количество потоков (рекомендуется 3-5)
+    """
+    safe_print(f"Запуск многопоточности для {len(stocks_config)} акций")
 
+    start_time = time.time()
 
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        results = list(executor.map(process_single_stock, stocks_config))
 
+    successful = sum(results)
+    total_time = time.time() - start_time
 
+    safe_print(f"Завершено: {successful}/{len(stocks_config)} акций успешно")
+    safe_print(f"Общее время: {total_time:.1f} сек")
+
+    return successful
