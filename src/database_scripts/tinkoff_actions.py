@@ -103,24 +103,6 @@ def fetch_data_from_db(table_name: str, size_package_days: int, candle_name: str
 
 def get_lonely_figi_data(client, figi: str, candle_interval: CandleInterval, size_package_days: int,
                          last_time:datetime.datetime) -> DataFrame:
-    '''
-    client: клиент тинькоффа
-    candle_interval: интервал свечей
-    size_package_days: размер пакета данных в днях
-    last_time: время последней записи в базе данных. если None - то записи не были сделаны и будет считано самое первое время свечи
-
-    return candles_df:
-        DataFrame: Датафрейм с колонками:
-            - datetime: время свечи
-            - open: цена открытия
-            - high: максимальная цена
-            - low: минимальная цена
-            - close: цена закрытия
-            - volume: объем
-            - is_complete: завершена ли свеча
-            - figi: идентификатор инструмента
-    """
-    '''
 
     if not isinstance(candle_interval, CandleInterval):
         raise TypeError(f"candle_interval должен быть CandleInterval, получен {type(candle_interval)}")
@@ -133,9 +115,6 @@ def get_lonely_figi_data(client, figi: str, candle_interval: CandleInterval, siz
     if candle_interval not in valid_intervals:
         raise ValueError(f"Неподдерживаемый интервал: {candle_interval}")
 
-    settings = MarketDataCacheSettings(base_cache_dir=Path("market_data_cache"))
-    market_data_cache = MarketDataCache(settings=settings, services=client)
-
     try:
         instrument = client.instruments.get_instrument_by(
             id_type=InstrumentIdType.INSTRUMENT_ID_TYPE_FIGI,
@@ -146,7 +125,6 @@ def get_lonely_figi_data(client, figi: str, candle_interval: CandleInterval, siz
         first_time = getattr(instrument, first_candle_attr, None)
 
         if not first_time:
-            # в 5 минутных интервалах часто такое будет. скипаем
             raise ValueError(f"Нет данных о первой свече для интервала {candle_interval}")
 
         if last_time and last_time.tzinfo is None:
@@ -155,27 +133,19 @@ def get_lonely_figi_data(client, figi: str, candle_interval: CandleInterval, siz
         target_from = last_time if last_time else first_time
         target_to = target_from + timedelta(days=size_package_days)
 
-        candles_iterator = market_data_cache.get_all_candles(
+        max_period = timedelta(days=1)
+        if target_to - target_from > max_period:
+            target_to = target_from + max_period
+
+        candles_response = client.market_data.get_candles(
             figi=figi,
             from_=target_from,
             to=target_to,
             interval=candle_interval
         )
 
-        try:
-            candles_list = list(candles_iterator)
-
-            if candles_list:
-                print(f"DEBUG: candles_list is full")
-            else:
-                print("DEBUG: candles_list is empty!")
-
-        except Exception as e:
-            print(f"DEBUG: Error converting to list: {e}")
-            candles_list = []
-
         data = []
-        for candle in candles_list:
+        for candle in candles_response.candles:
             data.append({
                 'datetime': candle.time.replace(tzinfo=None).isoformat(sep=' ', timespec='seconds'),
                 'open': float(candle.open.units) + float(candle.open.nano) / 1e9,
@@ -186,9 +156,11 @@ def get_lonely_figi_data(client, figi: str, candle_interval: CandleInterval, siz
                 'figi': figi
             })
 
+        print(f"{figi}: получено {len(data)} свечей")
+
     except Exception as err:
-        data = {}
-        print(err)
+        data = []
+        print(f"{figi}: {err}")
 
     return pd.DataFrame(data)
 
