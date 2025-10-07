@@ -2,7 +2,7 @@ from datetime import datetime
 from tinkoff.invest import Client,CandleInterval
 import threading
 from src.database_scripts.tinkoff_actions import TINKOFF_TOKEN, get_figi_from_file, get_lonely_figi_data, \
-    fetch_data_from_db, process_all_stocks_multithreaded, safe_print
+    fetch_data_from_db, process_all_stocks_multithreaded, safe_print, check_table_exists
 
 from tinkoff.invest import Client
 
@@ -18,18 +18,21 @@ if __name__ == '__main__':
     # Получаем список FIGI из файла
     figi_list = get_figi_from_file('candles_info_popular_ru_us.csv')
 
-    figi_list = ['BBG00F6NKQX3', 'BBG000VKG4R5']#figi_list[:2]
+    figi_list = ['BBG00F6NKQX3']#, 'BBG000VKG4R5', 'BBG000BNSZP1']#figi_list[:2]
+
     safe_print(f"Обрабатываем {len(figi_list)} акций")
 
     # Создаем конфигурацию для каждой акции вида имя_файла, размер пакета, фиги акции
     stocks_config = []
     SIZE_PACKAGE_DAYS = 4
     for i, figi in enumerate(figi_list):
-        table_name = f'{figi}_candle'
+        table_name = f'{figi}'
         stocks_config.append((table_name, SIZE_PACKAGE_DAYS, figi))  # (table_name, days, figi)
 
     # Запускаем многопоточную обработку
     process_all_stocks_multithreaded(stocks_config, max_workers=3)
+
+    #check_table_exists('BBG00F6NKQX3')
 
     a=1
 

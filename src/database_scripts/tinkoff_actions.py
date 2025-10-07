@@ -28,74 +28,161 @@ def safe_print(message:str):
         print(message)
 
 
-def fetch_data_from_db(table_name: str, size_package_days: int, candle_name: str) -> DataFrame:
-
-    columns_name = ["datetime", "load_consumption"]
-    columns_name_str = ''
-    for column in columns_name:
-        columns_name_str += column + ', '
-    columns_name_str = columns_name_str[:-2]
+def check_table_exists(table_name: str) -> bool:
+    """Проверяет существование таблицы в БД"""
 
     DB_PARAMS = {
-        "dbname": os.getenv("DB_NAME"),
-        "user": os.getenv("DB_USER"),
-        "password": os.getenv("DB_PASSWORD"),
-        "host": os.getenv("DB_HOST"),
-        "port": int(os.getenv("DB_PORT"))
+        "dbname": os.getenv("PG_DB_TEST"),
+        "user": os.getenv("PG_USER_TEST"),
+        "password": os.getenv("PG_PASSWORD_TEST"),
+        "host": os.getenv("PG_HOST_TEST"),
+        "port": int(os.getenv("PG_PORT_TEST"))
     }
-    '''
-    conn = psycopg2.connect(**DB_PARAMS)
-    cur = conn.cursor()
 
     try:
-        select_query = f"""
-        SELECT {columns_name_str} 
-        FROM {table_name} 
-        ORDER BY datetime;
-        """
+        conn = psycopg2.connect(**DB_PARAMS)
+        cur = conn.cursor()
 
-        cur.execute(select_query)
-        rows = cur.fetchall()
+        # PostgreSQL сохраняет имена таблиц в нижнем регистре
+        # Ищем таблицу в нижнем регистре
+        table_name_lower = table_name.lower()
 
-        df_result = pd.DataFrame(rows, columns=columns_name)
-        df_result["datetime"] = df_result["datetime"].dt.tz_localize(None)
-    '''
-
-    try:
-
-        df_result = pd.read_csv(f'{table_name}.csv')
-        df_result = df_result.drop_duplicates()
-
-        with Client(TINKOFF_TOKEN) as client:
-            last_time = pd.to_datetime(df_result.values[-1][0]).to_pydatetime()
-            df_new = get_lonely_figi_data(client, candle_name, CandleInterval.CANDLE_INTERVAL_1_MIN,size_package_days, last_time)
-
-            df_new[1:].to_csv(f'{table_name}.csv',
-                          mode='a',
-                          index=False, header=False)
-
-        print(f'I EXIST! {len(df_result)} rows')
-
-    except:
-
-        '''
-        create_table_query = f"""
-        CREATE TABLE IF NOT EXISTS {table_name} (
-            {columns_name[0]} TIMESTAMP PRIMARY KEY,
-            {columns_name[1]} FLOAT
+        check_query = """
+        SELECT EXISTS (
+            SELECT FROM information_schema.tables 
+            WHERE table_schema = 'public' 
+            AND table_name = %s
         );
         """
-        '''
-        a=1
-        with Client(TINKOFF_TOKEN) as client:
-            df_result = get_lonely_figi_data(client, candle_name, CandleInterval.CANDLE_INTERVAL_1_MIN, size_package_days, None)
 
-        df_result.to_csv(f'{table_name}.csv', index=False)
-        print(f'CREATE NEW TABLE {len(df_result)} rows')
+        cur.execute(check_query, (table_name_lower,))
+        exists = cur.fetchone()[0]
 
+        cur.close()
+        conn.close()
 
-    #cur.close()
-    #conn.close()
+        safe_print(
+            f"\nТаблица {table_name} (ищем как {table_name_lower}): {'СУЩЕСТВУЕТ' if exists else 'НЕ СУЩЕСТВУЕТ'}")
+        return exists
+
+    except Exception as e:
+        safe_print(f"Ошибка при проверке таблицы: {e}")
+        return False
+
+def fetch_data_from_db(table_name: str, size_package_days: int, candle_name: str) -> DataFrame:
+    DB_PARAMS = {
+        "dbname": os.getenv("PG_DB_TEST"),
+        "user": os.getenv("PG_USER_TEST"),
+        "password": os.getenv("PG_PASSWORD_TEST"),
+        "host": os.getenv("PG_HOST_TEST"),
+        "port": int(os.getenv("PG_PORT_TEST"))
+    }
+
+    conn = psycopg2.connect(**DB_PARAMS)
+    cur = conn.cursor()
+    df_result = pd.DataFrame()
+
+    try:
+        cur.execute("""
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_name = %s
+            );
+        """, (table_name,))
+        table_exists = cur.fetchone()[0]
+
+        if table_exists:
+            # Таблица существует - читаем данные
+            select_query = f"SELECT datetime, open, high, low, close, volume, figi FROM {table_name} ORDER BY datetime;"
+            cur.execute(select_query)
+            rows = cur.fetchall()
+            df_result = pd.DataFrame(rows, columns=["datetime", "open", "high", "low", "close", "volume", "figi"])
+            df_result["datetime"] = df_result["datetime"].dt.tz_localize(None)
+            safe_print(f'Загружено из БД: {len(df_result)} строк')
+
+            # Получаем новые данные
+            with Client(TINKOFF_TOKEN) as client:
+                if not df_result.empty:
+                    last_time = pd.to_datetime(df_result["datetime"].iloc[-1]).to_pydatetime()
+                else:
+                    last_time = None
+
+                df_new = get_lonely_figi_data(client, candle_name, CandleInterval.CANDLE_INTERVAL_5_MIN,
+                                              size_package_days, last_time)
+
+                # Добавляем новые данные в БД
+                if not df_new.empty:
+                    df_new = df_new.drop_duplicates(subset=['datetime'])
+
+                    for _, row in df_new.iterrows():
+                        insert_query = f"""
+                            INSERT INTO {table_name} (datetime, open, high, low, close, volume, figi)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s)
+                            ON CONFLICT (datetime) DO UPDATE SET
+                                open = EXCLUDED.open,
+                                high = EXCLUDED.high, 
+                                low = EXCLUDED.low,
+                                close = EXCLUDED.close,
+                                volume = EXCLUDED.volume,
+                                figi = EXCLUDED.figi;
+                        """
+                        cur.execute(insert_query, (
+                            row['datetime'], row['open'], row['high'], row['low'],
+                            row['close'], row['volume'], row['figi']
+                        ))
+                    safe_print(f'БД обновлена: +{len(df_new)} строк')
+                else:
+                    safe_print(f'Нет новых данных для БД')
+
+        else:
+            # Таблица не существует - создаем и заполняем
+            safe_print(f'Создаем таблицу {table_name} в БД')
+
+            create_table_query = f"""
+                CREATE TABLE IF NOT EXISTS {table_name} (
+                    datetime TIMESTAMP PRIMARY KEY,
+                    open FLOAT NOT NULL,
+                    high FLOAT NOT NULL,
+                    low FLOAT NOT NULL,
+                    close FLOAT NOT NULL,
+                    volume BIGINT NOT NULL,
+                    figi VARCHAR(20) NOT NULL
+                );
+            """
+            cur.execute(create_table_query)
+            conn.commit()
+            safe_print(f'Таблица {table_name} создана и закоммичена')
+            # Получаем начальные данные
+            with Client(TINKOFF_TOKEN) as client:
+                df_result = get_lonely_figi_data(client, candle_name, CandleInterval.CANDLE_INTERVAL_1_MIN,
+                                                 size_package_days, None)
+
+            # Записываем данные в новую таблицу
+            if not df_result.empty:
+                df_result = df_result.drop_duplicates(subset=['datetime'])
+                for _, row in df_result.iterrows():
+                    insert_query = f"""
+                        INSERT INTO {table_name} (datetime, open, high, low, close, volume, figi)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (datetime) DO NOTHING;
+                    """
+                    cur.execute(insert_query, (
+                        row['datetime'], row['open'], row['high'], row['low'],
+                        row['close'], row['volume'], row['figi']
+                    ))
+                safe_print(f'Таблица создана: {len(df_result)} строк')
+            else:
+                safe_print(f'Не удалось получить данные для создания таблицы')
+
+        conn.commit()  # Фиксируем все изменения
+
+    except Exception as e:
+        conn.rollback()  # Откатываем при ошибке
+        safe_print(f'Ошибка БД {table_name}: {e}')
+
+    finally:
+        cur.close()
+        conn.close()
 
     return df_result
 
@@ -156,11 +243,11 @@ def get_lonely_figi_data(client, figi: str, candle_interval: CandleInterval, siz
                 'figi': figi
             })
 
-        print(f"{figi}: получено {len(data)} свечей")
+        safe_print(f"{figi}: получено {len(data)} свечей\n")
 
     except Exception as err:
         data = []
-        print(f"{figi}: {err}")
+        safe_print(f"{figi}: {err}")
 
     return pd.DataFrame(data)
 
@@ -214,6 +301,10 @@ def process_single_stock(args):
         safe_print(f"Обрабатываем {candle_name}...")
         result = fetch_data_from_db(table_name, size_package_days, candle_name)
         result = result.drop_duplicates()
+
+        time.sleep(0.5)
+        check_table_exists(table_name)
+
         safe_print(f"Акция {candle_name}: завершено")
         return True
     except Exception as e:
