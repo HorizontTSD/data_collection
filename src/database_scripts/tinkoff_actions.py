@@ -1,6 +1,7 @@
 import concurrent
 import csv
 import datetime
+import logging
 import time
 from pathlib import Path
 from typing import Any
@@ -18,6 +19,15 @@ from enum import Enum
 import threading
 
 
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('app.log'),  # Запись в файл
+        logging.StreamHandler()          # Вывод в консоль
+    ]
+)
+
 load_dotenv()
 TINKOFF_TOKEN = os.getenv('TINKOFF_TOKEN')
 
@@ -28,7 +38,7 @@ def safe_print(message:str):
     безопасная печать для многопоточности
     """
     with print_lock:
-        print(message)
+        logging.info(f'{message}')
 
 
 def check_table_exists(table_name: str) -> bool:
@@ -64,7 +74,7 @@ def check_table_exists(table_name: str) -> bool:
         conn.close()
 
         safe_print(
-            f"\nТаблица {table_name} (ищем как {table_name_lower}): {'СУЩЕСТВУЕТ' if exists else 'НЕ СУЩЕСТВУЕТ'}")
+            f"Таблица {table_name} (ищем как {table_name_lower}): {'СУЩЕСТВУЕТ' if exists else 'НЕ СУЩЕСТВУЕТ'}")
         return exists
 
     except Exception as e:
@@ -106,14 +116,15 @@ def fetch_and_write_data_from_db(table_name: str, size_package_days: int) -> Dat
 
             cur.execute(select_query)
             rows = cur.fetchall()
-            df_result = pd.DataFrame(rows, columns=["datetime", "open", "high", "low", "close", "volume", "figi"])
-            df_result["datetime"] = df_result["datetime"].dt.tz_localize(None)
-            safe_print(f'Загружено из БД: {len(df_result)} строк')
+            if rows:
+                df_result = pd.DataFrame(rows, columns=["datetime", "open", "high", "low", "close", "volume", "figi"])
+                df_result["datetime"] = df_result["datetime"].dt.tz_localize(None)
+            safe_print(f'Загружено из таблицы "{table_name.lower()}": {len(df_result)} строк')
 
             # Получаем новые данные
             with Client(TINKOFF_TOKEN) as client:
                 if not df_result.empty:
-                    last_time = pd.to_datetime(df_result["datetime"].iloc[-1]).to_pydatetime()
+                    last_time = pd.to_datetime(df_result["datetime"].max()).to_pydatetime()
                 else:
                     last_time = None
 
@@ -140,9 +151,9 @@ def fetch_and_write_data_from_db(table_name: str, size_package_days: int) -> Dat
                             row['datetime'], row['open'], row['high'], row['low'],
                             row['close'], row['volume'], row['figi']
                         ))
-                    safe_print(f'БД обновлена: +{len(df_new)} строк')
+                    safe_print(f'Таблица "{table_name.lower()}" обновлена: +{len(df_new)} строк')
                 else:
-                    safe_print(f'Нет новых данных для БД')
+                    safe_print(f'Нет новых данных для таблицы "{table_name.lower()}"')
 
         else:
             # Таблица не существует - создаем и заполняем
@@ -161,7 +172,6 @@ def fetch_and_write_data_from_db(table_name: str, size_package_days: int) -> Dat
             """
             cur.execute(create_table_query)
             conn.commit()
-            safe_print(f'Таблица {table_name} создана и закоммичена')
 
             # Получаем начальные данные
             with Client(TINKOFF_TOKEN) as client:
@@ -181,7 +191,7 @@ def fetch_and_write_data_from_db(table_name: str, size_package_days: int) -> Dat
                         row['datetime'], row['open'], row['high'], row['low'],
                         row['close'], row['volume'], row['figi']
                     ))
-                safe_print(f'Таблица создана: {len(df_result)} строк')
+                safe_print(f'Таблица "{table_name}" успешно создана. В ней {len(df_result)} строк')
             else:
                 safe_print(f'Не удалось получить данные для создания таблицы')
 
@@ -219,7 +229,7 @@ def get_lonely_figi_data(client, figi: str, candle_interval: CandleInterval, siz
     }
 
     if candle_interval not in valid_intervals:
-        raise ValueError(f"Неподдерживаемый интервал: {candle_interval}")
+        raise ValueError(f"Неподдерживаемый интервал: '{candle_interval}'")
 
     try:
         instrument = client.instruments.get_instrument_by(
@@ -231,7 +241,7 @@ def get_lonely_figi_data(client, figi: str, candle_interval: CandleInterval, siz
         first_time = getattr(instrument, first_candle_attr, None)
 
         if not first_time:
-            raise ValueError(f"Нет данных о первой свече для интервала {candle_interval}")
+            raise ValueError(f"Нет данных о первой свече для интервала '{candle_interval}'")
 
         if last_time and last_time.tzinfo is None:
             last_time = last_time.replace(tzinfo=datetime.timezone.utc)
@@ -262,7 +272,7 @@ def get_lonely_figi_data(client, figi: str, candle_interval: CandleInterval, siz
                 'figi': figi
             })
 
-        safe_print(f"{figi}: получено {len(data)} свечей\n")
+        safe_print(f"Из акции с идентификатором '{figi}': получено {len(data)} свечей\n")
 
     except Exception as err:
         data = []
@@ -322,16 +332,16 @@ def process_single_stock(args):
     """
     candle_name, size_package_days = args
     try:
-        safe_print(f"Обрабатываем {candle_name}...")
+        safe_print(f"Обрабатываем акцию '{candle_name}'...")
         result = fetch_and_write_data_from_db(candle_name, size_package_days)
         result = result.drop_duplicates()
         time.sleep(0.5)
-        check_table_exists(candle_name)
-        safe_print(f"Акция {candle_name}: завершено")
+        #check_table_exists(candle_name)
+        safe_print(f"Акция '{candle_name}': завершено")
         return True
 
     except Exception as e:
-        safe_print(f"Ошибка {candle_name}: {e}")
+        safe_print(f"Ошибка '{candle_name}': {e}")
         return False
 
 
@@ -340,7 +350,7 @@ def process_all_stocks_multithreaded(stocks_config, max_workers=3):
     stocks_config: список кортежей (candle_name, size_package_days)
     max_workers: количество потоков (рекомендуется 3-5)
     """
-    safe_print(f"Запуск многопоточности для {len(stocks_config)} акций")
+    safe_print(f"Запуск многопоточности для {len(stocks_config)} акций...")
 
     start_time = time.time()
 

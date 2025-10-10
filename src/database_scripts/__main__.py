@@ -18,18 +18,15 @@ if __name__ == '__main__':
     # Получаем список FIGI из файла
     figi_list = get_figi_from_file('candles_info_popular_ru_us.csv')
 
-    figi_list = ['BBG00F6NKQX3']#, 'BBG000VKG4R5', 'BBG000BNSZP1']#figi_list[:2]
-
-    safe_print(f"Обрабатываем {len(figi_list)} акций")
-
-    # Создаем конфигурацию для каждой акции вида имя_файла, размер пакета, фиги акции
+    #figi_list = ['BBG00F6NKQX3', 'BBG000VKG4R5', 'BBG000BNSZP1']#figi_list[:2]
+    #figi_list = figi_list[:6]
+    # Создаем конфигурацию для каждой акции вида имя_файла, размер пакета
     stocks_config = []
     SIZE_PACKAGE_DAYS = 4
     for i, figi in enumerate(figi_list):
         table_name = f'{figi}'
         stocks_config.append((table_name, SIZE_PACKAGE_DAYS))  # (table_name, days, figi)
 
-    # Запускаем многопоточную обработку
     process_all_stocks_multithreaded(stocks_config, max_workers=3)
 
     #check_table_exists('BBG00F6NKQX3')
