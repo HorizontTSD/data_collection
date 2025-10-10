@@ -24,6 +24,9 @@ TINKOFF_TOKEN = os.getenv('TINKOFF_TOKEN')
 print_lock = threading.Lock()
 
 def safe_print(message:str):
+    """
+    безопасная печать для многопоточности
+    """
     with print_lock:
         print(message)
 
@@ -44,7 +47,6 @@ def check_table_exists(table_name: str) -> bool:
         cur = conn.cursor()
 
         # PostgreSQL сохраняет имена таблиц в нижнем регистре
-        # Ищем таблицу в нижнем регистре
         table_name_lower = table_name.lower()
 
         check_query = """
@@ -69,7 +71,13 @@ def check_table_exists(table_name: str) -> bool:
         safe_print(f"Ошибка при проверке таблицы: {e}")
         return False
 
-def fetch_data_from_db(table_name: str, size_package_days: int, candle_name: str) -> DataFrame:
+
+def fetch_and_write_data_from_db(table_name: str, size_package_days: int) -> DataFrame:
+    """
+    Извлекает данные из timescale db и в случае необходимости создает таблицу по каждой отдельной акции
+    table_name: имя таблицы состоит из figi каждой акции
+    size_package_days: размер пакета данных в днях
+    """
     DB_PARAMS = {
         "dbname": os.getenv("PG_DB_TEST"),
         "user": os.getenv("PG_USER_TEST"),
@@ -88,12 +96,14 @@ def fetch_data_from_db(table_name: str, size_package_days: int, candle_name: str
                 SELECT FROM information_schema.tables 
                 WHERE table_name = %s
             );
-        """, (table_name,))
+        """, (table_name.lower(),))
         table_exists = cur.fetchone()[0]
 
         if table_exists:
             # Таблица существует - читаем данные
-            select_query = f"SELECT datetime, open, high, low, close, volume, figi FROM {table_name} ORDER BY datetime;"
+            select_query = (f"SELECT datetime, open, high, low, close, volume, figi "
+                            f"FROM {table_name} ORDER BY datetime;")
+
             cur.execute(select_query)
             rows = cur.fetchall()
             df_result = pd.DataFrame(rows, columns=["datetime", "open", "high", "low", "close", "volume", "figi"])
@@ -107,7 +117,7 @@ def fetch_data_from_db(table_name: str, size_package_days: int, candle_name: str
                 else:
                     last_time = None
 
-                df_new = get_lonely_figi_data(client, candle_name, CandleInterval.CANDLE_INTERVAL_5_MIN,
+                df_new = get_lonely_figi_data(client, table_name, CandleInterval.CANDLE_INTERVAL_1_MIN,
                                               size_package_days, last_time)
 
                 # Добавляем новые данные в БД
@@ -152,9 +162,10 @@ def fetch_data_from_db(table_name: str, size_package_days: int, candle_name: str
             cur.execute(create_table_query)
             conn.commit()
             safe_print(f'Таблица {table_name} создана и закоммичена')
+
             # Получаем начальные данные
             with Client(TINKOFF_TOKEN) as client:
-                df_result = get_lonely_figi_data(client, candle_name, CandleInterval.CANDLE_INTERVAL_1_MIN,
+                df_result = get_lonely_figi_data(client, table_name, CandleInterval.CANDLE_INTERVAL_1_MIN,
                                                  size_package_days, None)
 
             # Записываем данные в новую таблицу
@@ -174,7 +185,7 @@ def fetch_data_from_db(table_name: str, size_package_days: int, candle_name: str
             else:
                 safe_print(f'Не удалось получить данные для создания таблицы')
 
-        conn.commit()  # Фиксируем все изменения
+        conn.commit()
 
     except Exception as e:
         conn.rollback()  # Откатываем при ошибке
@@ -187,9 +198,17 @@ def fetch_data_from_db(table_name: str, size_package_days: int, candle_name: str
     return df_result
 
 
-
 def get_lonely_figi_data(client, figi: str, candle_interval: CandleInterval, size_package_days: int,
                          last_time:datetime.datetime) -> DataFrame:
+    """
+    client: клиент тинькоффа
+    figi: уникальный идентификатор акции. название таблицы это фиги в нижнем регистре
+    candle_interval: интервал свечи
+    size_package_days: размер пакета данных в днях
+    last_time:
+        None - нет записаей по акции
+        Время последней записи в таблице по акции
+    """
 
     if not isinstance(candle_interval, CandleInterval):
         raise TypeError(f"candle_interval должен быть CandleInterval, получен {type(candle_interval)}")
@@ -294,19 +313,23 @@ def get_figi_from_file(file_name:str) -> list:
 
     return figi_list
 
+
 def process_single_stock(args):
-    """Обрабатывает одну акцию в потоке"""
-    table_name, size_package_days, candle_name = args
+    """Обрабатывает одну акцию в потоке
+    args:
+        candle_name - figi акции
+        size_package_days - размер пакета в днях
+    """
+    candle_name, size_package_days = args
     try:
         safe_print(f"Обрабатываем {candle_name}...")
-        result = fetch_data_from_db(table_name, size_package_days, candle_name)
+        result = fetch_and_write_data_from_db(candle_name, size_package_days)
         result = result.drop_duplicates()
-
         time.sleep(0.5)
-        check_table_exists(table_name)
-
+        check_table_exists(candle_name)
         safe_print(f"Акция {candle_name}: завершено")
         return True
+
     except Exception as e:
         safe_print(f"Ошибка {candle_name}: {e}")
         return False
@@ -314,7 +337,7 @@ def process_single_stock(args):
 
 def process_all_stocks_multithreaded(stocks_config, max_workers=3):
     """
-    stocks_config: список кортежей (table_name, size_package_days, candle_name)
+    stocks_config: список кортежей (candle_name, size_package_days)
     max_workers: количество потоков (рекомендуется 3-5)
     """
     safe_print(f"Запуск многопоточности для {len(stocks_config)} акций")

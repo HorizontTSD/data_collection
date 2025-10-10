@@ -2,7 +2,7 @@ from datetime import datetime
 from tinkoff.invest import Client,CandleInterval
 import threading
 from src.database_scripts.tinkoff_actions import TINKOFF_TOKEN, get_figi_from_file, get_lonely_figi_data, \
-    fetch_data_from_db, process_all_stocks_multithreaded, safe_print, check_table_exists
+    fetch_and_write_data_from_db, process_all_stocks_multithreaded, safe_print, check_table_exists
 
 from tinkoff.invest import Client
 
@@ -27,7 +27,7 @@ if __name__ == '__main__':
     SIZE_PACKAGE_DAYS = 4
     for i, figi in enumerate(figi_list):
         table_name = f'{figi}'
-        stocks_config.append((table_name, SIZE_PACKAGE_DAYS, figi))  # (table_name, days, figi)
+        stocks_config.append((table_name, SIZE_PACKAGE_DAYS))  # (table_name, days, figi)
 
     # Запускаем многопоточную обработку
     process_all_stocks_multithreaded(stocks_config, max_workers=3)
