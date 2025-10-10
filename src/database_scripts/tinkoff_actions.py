@@ -199,7 +199,7 @@ def fetch_and_write_data_from_db(table_name: str, size_package_days: int) -> Dat
 
     except Exception as e:
         conn.rollback()  # Откатываем при ошибке
-        safe_print(f'Ошибка БД {table_name}: {e}')
+        safe_print(f'ОШИБКА БД {table_name}: {e}')
 
     finally:
         cur.close()

@@ -1,3 +1,5 @@
+import os
+import time
 from datetime import datetime
 from tinkoff.invest import Client,CandleInterval
 import threading
@@ -6,6 +8,8 @@ from src.database_scripts.tinkoff_actions import TINKOFF_TOKEN, get_figi_from_fi
 
 from tinkoff.invest import Client
 
+# Файл создается ВНУТРИ контейнера
+STOP_FILE_PATH = "./tmp/stop_container"
 
 if __name__ == '__main__':
     #figi_list = get_figi_from_file('candles_info_popular_ru_us.csv')
@@ -20,16 +24,23 @@ if __name__ == '__main__':
 
     #figi_list = ['BBG00F6NKQX3', 'BBG000VKG4R5', 'BBG000BNSZP1']#figi_list[:2]
     #figi_list = figi_list[:6]
-    # Создаем конфигурацию для каждой акции вида имя_файла, размер пакета
-    stocks_config = []
-    SIZE_PACKAGE_DAYS = 4
-    for i, figi in enumerate(figi_list):
-        table_name = f'{figi}'
-        stocks_config.append((table_name, SIZE_PACKAGE_DAYS))  # (table_name, days, figi)
+    step = 0
 
-    process_all_stocks_multithreaded(stocks_config, max_workers=3)
 
-    #check_table_exists('BBG00F6NKQX3')
+    while True:
+        if os.path.exists(STOP_FILE_PATH):
+            break
+        # Создаем конфигурацию для каждой акции вида имя_файла, размер пакета
+        stocks_config = []
+        SIZE_PACKAGE_DAYS = 4
+        for i, figi in enumerate(figi_list):
+            table_name = f'{figi}'
+            stocks_config.append((table_name, SIZE_PACKAGE_DAYS))  # (table_name, days, figi)
 
-    a=1
+        process_all_stocks_multithreaded(stocks_config, max_workers=3)
+
+        #check_table_exists('BBG00F6NKQX3')
+        safe_print(f'STEP {step}')
+        time.sleep(10)
+        step += 1
 
