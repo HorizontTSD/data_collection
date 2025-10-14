@@ -3,7 +3,6 @@ import csv
 import datetime
 import logging
 import time
-from pathlib import Path
 from typing import Any
 import psycopg2
 from datetime import timedelta
@@ -12,10 +11,6 @@ import pandas as pd
 from tinkoff.invest import Client, CandleInterval, InstrumentIdType
 from dotenv import load_dotenv
 import os
-from tinkoff.invest.caching.market_data_cache.cache import MarketDataCache
-from tinkoff.invest.caching.market_data_cache.cache_settings import MarketDataCacheSettings
-from tinkoff.invest.utils import now
-from enum import Enum
 import threading
 
 
@@ -23,7 +18,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('app.log'),  # Запись в файл
+        logging.FileHandler('app.log'),  # Запись в файл app.log
         logging.StreamHandler()          # Вывод в консоль
     ]
 )
@@ -31,7 +26,7 @@ logging.basicConfig(
 load_dotenv()
 TINKOFF_TOKEN = os.getenv('TINKOFF_TOKEN')
 
-print_lock = threading.Lock()
+print_lock = threading.Lock() # замок для безопасной печати
 
 def safe_print(message:str):
     """
@@ -56,7 +51,7 @@ def check_table_exists(table_name: str) -> bool:
         conn = psycopg2.connect(**DB_PARAMS)
         cur = conn.cursor()
 
-        # PostgreSQL сохраняет имена таблиц в нижнем регистре
+        # PostgreSQL сохраняет имена таблиц в нижнем регистре!!!
         table_name_lower = table_name.lower()
 
         check_query = """
@@ -78,7 +73,7 @@ def check_table_exists(table_name: str) -> bool:
         return exists
 
     except Exception as e:
-        safe_print(f"Ошибка при проверке таблицы: {e}")
+        safe_print(f"ERROR!: Ошибка при проверке таблицы: {e}")
         return False
 
 
@@ -107,6 +102,7 @@ def fetch_and_write_data_from_db(table_name: str, size_package_days: int) -> Dat
                 WHERE table_name = %s
             );
         """, (table_name.lower(),))
+
         table_exists = cur.fetchone()[0]
 
         if table_exists:
@@ -115,10 +111,12 @@ def fetch_and_write_data_from_db(table_name: str, size_package_days: int) -> Dat
                             f"FROM {table_name} ORDER BY datetime;")
 
             cur.execute(select_query)
+
             rows = cur.fetchall()
             if rows:
                 df_result = pd.DataFrame(rows, columns=["datetime", "open", "high", "low", "close", "volume", "figi"])
                 df_result["datetime"] = df_result["datetime"].dt.tz_localize(None)
+
             safe_print(f'Загружено из таблицы "{table_name.lower()}": {len(df_result)} строк')
 
             # Получаем новые данные
@@ -151,6 +149,7 @@ def fetch_and_write_data_from_db(table_name: str, size_package_days: int) -> Dat
                             row['datetime'], row['open'], row['high'], row['low'],
                             row['close'], row['volume'], row['figi']
                         ))
+
                     safe_print(f'Таблица "{table_name.lower()}" обновлена: +{len(df_new)} строк')
                 else:
                     safe_print(f'Нет новых данных для таблицы "{table_name.lower()}"')
@@ -177,7 +176,6 @@ def fetch_and_write_data_from_db(table_name: str, size_package_days: int) -> Dat
             with Client(TINKOFF_TOKEN) as client:
                 df_result = get_lonely_figi_data(client, table_name, CandleInterval.CANDLE_INTERVAL_1_MIN,
                                                  size_package_days, None)
-
             # Записываем данные в новую таблицу
             if not df_result.empty:
                 df_result = df_result.drop_duplicates(subset=['datetime'])
@@ -199,7 +197,7 @@ def fetch_and_write_data_from_db(table_name: str, size_package_days: int) -> Dat
 
     except Exception as e:
         conn.rollback()  # Откатываем при ошибке
-        safe_print(f'ОШИБКА БД {table_name}: {e}')
+        safe_print(f'ERROR!: ОШИБКА БД {table_name}: {e}')
 
     finally:
         cur.close()
@@ -276,7 +274,7 @@ def get_lonely_figi_data(client, figi: str, candle_interval: CandleInterval, siz
 
     except Exception as err:
         data = []
-        safe_print(f"{figi}: {err}")
+        safe_print(f"ERROR!: {figi}: {err}")
 
     return pd.DataFrame(data)
 
@@ -341,7 +339,7 @@ def process_single_stock(args):
         return True
 
     except Exception as e:
-        safe_print(f"Ошибка '{candle_name}': {e}")
+        safe_print(f"ERROR!: Ошибка '{candle_name}': {e}")
         return False
 
 

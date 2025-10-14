@@ -147,3 +147,18 @@ pdm install
 cd D:\work_dirs\data_collection\
 python -m src.database_scripts.__main__
 ```
+
+Запуск Docker-контейнера для тинькофф-акций:
+```
+ docker build -t data-collector . --load --progress=plain
+ docker run data-collector
+```
+Для отладки:
+```
+ docker images
+```
+ 
+Для остановки контейнера:
+```
+docker stop data-collector
+```
