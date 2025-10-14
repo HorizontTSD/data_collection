@@ -130,3 +130,35 @@ C:\Users\1\AppData\Local\Programs\Python\Python312\Scripts\
 D:\work_dirs\data_collection\.venv\Scripts
 ```
 3. Если п.1-2 не помогли, то отключить брандмауэр Windows
+
+# Акции Тинькоффа
+Запуск из директории
+```
+D:\work_dirs\data_collection\
+```
+Необходимые переменные окружения в .env:
+1. Токен тинькоффа, который получается путем тыкания банковского менеджера:
+TINKOFF_TOKEN=t.my_token
+
+В консоли:
+```
+pdm install
+.\.venv\Scripts\activate
+cd D:\work_dirs\data_collection\
+python -m src.database_scripts.__main__
+```
+
+Запуск Docker-контейнера для тинькофф-акций:
+```
+ docker build -t data-collector . --load --progress=plain
+ docker run data-collector
+```
+Для отладки:
+```
+ docker images
+```
+ 
+Для остановки контейнера:
+```
+docker stop data-collector
+```
