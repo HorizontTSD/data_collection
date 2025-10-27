@@ -150,9 +150,15 @@ python -m src.database_scripts.__main__
 
 Запуск Docker-контейнера для тинькофф-акций:
 ```
- docker build -t data-collector . --load --progress=plain
+ docker build -t data-collector . --load --progress=plain --env-file .env
  docker run data-collector
+ 
 ```
+или
+```
+sudo docker run -d --restart always --env-file .env data-collector
+```
+
 Для отладки:
 ```
  docker images

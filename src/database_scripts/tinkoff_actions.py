@@ -206,18 +206,18 @@ def fetch_and_write_data_from_db(table_name: str, size_package_days: int) -> Dat
     return df_result
 
 
-def get_lonely_figi_data(client, figi: str, candle_interval: CandleInterval, size_package_days: int,
+def get_lonely_figi_data(client, figi_and_company: str, candle_interval: CandleInterval, size_package_days: int,
                          last_time:datetime.datetime) -> DataFrame:
     """
     client: клиент тинькоффа
-    figi: уникальный идентификатор акции. название таблицы это фиги в нижнем регистре
+    figi_and_company: уникальный идентификатор акции и ее компания через _. название таблицы это фиги в нижнем регистре
     candle_interval: интервал свечи
     size_package_days: размер пакета данных в днях
     last_time:
         None - нет записаей по акции
         Время последней записи в таблице по акции
     """
-
+    figi = figi_and_company.split('_')[0]
     if not isinstance(candle_interval, CandleInterval):
         raise TypeError(f"candle_interval должен быть CandleInterval, получен {type(candle_interval)}")
 
@@ -274,7 +274,7 @@ def get_lonely_figi_data(client, figi: str, candle_interval: CandleInterval, siz
 
     except Exception as err:
         data = []
-        safe_print(f"ERROR!: {figi}: {err}")
+        safe_print(f"ERROR!: {figi_and_company}: {err}")
 
     return pd.DataFrame(data)
 
@@ -302,7 +302,7 @@ def get_all_figi_from_tbank(data:list) -> list[Any]:
     return figi
 
 
-def get_figi_from_file(file_name:str) -> list:
+def get_figi_from_file(file_name:str) -> tuple[list[Any], list[Any]]:
     """
     file_name: имя файла с отобранными вручную акциями (из побочного квеста)
     return figi: список уникальных id избранных акций
@@ -310,7 +310,7 @@ def get_figi_from_file(file_name:str) -> list:
     script_dir = os.path.dirname(os.path.abspath(__file__))
     file_path = os.path.join(script_dir, file_name)
 
-    figi_list = []
+    figi_list, company_list = [], []
     with open(file_path, 'r', encoding='utf-8') as file:
         csv_reader = csv.reader(file)
         next(csv_reader)
@@ -318,8 +318,9 @@ def get_figi_from_file(file_name:str) -> list:
         for row in csv_reader:
             if row:
                 figi_list.append(row[0])
+                company_list.append(row[1])
 
-    return figi_list
+    return figi_list, company_list
 
 
 def process_single_stock(args):

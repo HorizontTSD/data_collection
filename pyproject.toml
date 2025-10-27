@@ -21,7 +21,8 @@ dependencies = [
     "requests>=2.32.4",
     "tqdm>=4.67.1",
     "tinkoff>=0.1.1",
-    "tinkoff-investments>=0.2.0b114"
+    "tinkoff-investments>=0.2.0b114",
+    "transliterate>=1.10.2"
 ]
 requires-python = ">=3.9"
 readme = "README.md"
