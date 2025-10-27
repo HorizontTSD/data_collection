@@ -112,3 +112,59 @@ docker images
 ```bash
 docker run -p 7071:7071 <IMAGE ID>
 ```
+
+# Я пишу код на Windows 
+Молодец! Хотя мне тебя жаль.
+
+### Когда все сломалось
+
+Лечим отказ запуска сервера (address error):
+1. В server.py меняем все локалхосты с 0.0.0.0 на 127.0.0.1
+
+2. Проверяем переменные среды:
+В "Path" должны находиться пути до версии питона и до сгенерированного виртуального окружения:
+
+Например,
+```
+C:\Users\1\AppData\Local\Programs\Python\Python312\Scripts\
+D:\work_dirs\data_collection\.venv\Scripts
+```
+3. Если п.1-2 не помогли, то отключить брандмауэр Windows
+
+# Акции Тинькоффа
+Запуск из директории
+```
+D:\work_dirs\data_collection\
+```
+Необходимые переменные окружения в .env:
+1. Токен тинькоффа, который получается путем тыкания банковского менеджера:
+TINKOFF_TOKEN=t.my_token
+
+В консоли:
+```
+pdm install
+.\.venv\Scripts\activate
+cd D:\work_dirs\data_collection\
+python -m src.database_scripts.__main__
+```
+
+Запуск Docker-контейнера для тинькофф-акций:
+```
+ docker build -t data-collector . --load --progress=plain --env-file .env
+ docker run data-collector
+ 
+```
+или
+```
+sudo docker run -d --restart always --env-file .env data-collector
+```
+
+Для отладки:
+```
+ docker images
+```
+ 
+Для остановки контейнера:
+```
+docker stop data-collector
+```
